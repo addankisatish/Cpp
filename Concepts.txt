@@ -1,0 +1,147 @@
+Concepts are compile-time predicates that constrain template parameters. They tell the compiler (and humans) what kind of types a template expects.
+
+Before C++20, templates could result in long and cryptic compiler errors when the wrong type was used. With Concepts, these errors are clearer and constraints can be enforced early.
+
+template<typename T>
+T add(T a, T b) {
+    return a + b;
+}
+
+This works for types that support operator+, but if you accidentally pass a type that doesn’t (e.g., a std::vector), you’ll get a long error message.
+
+Same with Concepts
+------------------
+
+#include <concepts>
+
+template<std::integral T>  // Constraint: T must be an integral type
+T add(T a, T b) {
+    return a + b;
+}
+
+
+
+| Concept                  | Meaning                                    |
+| ------------------------ | ------------------------------------------ |
+| `std::integral`          | Type behaves like an int (int, long, etc.) |
+| `std::floating_point`    | Type is a float or double                  |
+| `std::same_as<T>`        | Type is exactly T                          |
+| `std::derived_from<T>`   | Type inherits from T                       |
+| `std::convertible_to<T>` | Type can be converted to T                 |
+| `std::invocable`         | Can be called like a function              |
+| `std::regular`           | Has copy, move, assignment, etc.           |
+
+
+Custom concept example:
+-----------------------
+
+template<typename T>
+concept Addable = requires (T a, T b) {
+    { a + b } -> std::same_as<T>;
+};
+
+template<Addable T>
+T add(T a, T b) {
+    return a + b;
+}
+
+
+================================================
+
+
+#include <concepts>
+#include <iostream>
+
+template<std::integral T>
+T multiply(T a, T b) {
+    return a * b;
+}
+
+int main() {
+    std::cout << multiply(5, 10) << "\n";  // OK
+    // std::cout << multiply(5.5, 10.0) << "\n"; // ❌ compile-time error: double is not integral
+}
+
+Here, T must satisfy the std::integral concept. Floating-point types are rejected.
+
+
+========================================
+
+2. Custom Concept Example: Addable
+
+#include <concepts>
+#include <iostream>
+
+template<typename T>
+concept Addable = requires(T a, T b) {
+    { a + b } -> std::same_as<T>;
+};
+
+template<Addable T>
+T add(T a, T b) {
+    return a + b;
+}
+
+int main() {
+    std::cout << add(2, 3) << "\n";       // ✅ int
+    std::cout << add(2.5, 3.1) << "\n";   // ✅ double
+    // std::cout << add("hi", "there") << "\n"; // ❌ compile-time error
+}
+
+===========================================
+
+3. Compound Constraints using && and ||
+
+template<typename T>
+concept Numeric = std::integral<T> || std::floating_point<T>;
+
+template<Numeric T>
+T square(T x) {
+    return x * x;
+}
+
+This allows both ints and floats but rejects things like std::string.
+
+==========================================
+
+4. Constrained Class Template Example
+
+template<std::integral T>
+class Counter {
+    T count = 0;
+public:
+    void increment() { ++count; }
+    T value() const { return count; }
+};
+
+int main() {
+    Counter<int> c;
+    c.increment();
+    std::cout << c.value() << "\n";
+
+    // Counter<double> d; // ❌ compile-time error
+}
+
+==================================================================
+
+5. Using requires clause instead of inline constraint
+
+template<typename T>
+T multiply(T a, T b) requires std::integral<T> {
+    return a * b;
+}
+
+
+=========================================================
+
+6. Concepts with Lambdas (C++20)
+
+auto square = [](std::integral auto x) {
+    return x * x;
+};
+
+std::cout << square(4);     // ✅ OK
+// std::cout << square(4.5); // ❌ error
+
+
+
