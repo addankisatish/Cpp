@@ -1,0 +1,362 @@
+What is type_traits?
+====================
+
+<type_traits> is a C++ header that provides templates to inspect and modify types at compile time.
+
+It’s widely used for:
+
+Enabling/disabling template instantiations (SFINAE)
+
+Type transformations
+
+Conditional compilation
+
+Meta-programming
+
+===========================================
+
+Categories of type_traits
+
+1. Type Property Checkers
+--------------------------
+
+Check if a type has a specific property → returns true or false.
+
+std::is_integral<int>::value         // true
+std::is_floating_point<float>::value // true
+std::is_pointer<int*>::value         // true
+std::is_class<std::string>::value    // true
+
+| Trait                  | Checks if...                    |
+| ---------------------- | ------------------------------- |
+| `is_integral<T>`       | T is int, long, char, etc.      |
+| `is_floating_point<T>` | T is float, double, long double |
+| `is_arithmetic<T>`     | int/float types                 |
+| `is_enum<T>`           | T is an enum                    |
+| `is_pointer<T>`        | T is a pointer                  |
+| `is_class<T>`          | T is a class or struct          |
+| `is_same<T, U>`        | T and U are the same            |
+| `is_base_of<Base, D>`  | Base is base class of D         |
+| `is_const<T>`          | T is a const type               |
+
+Write a function template print_type() that:
+--------------------------------------------
+
+✅ Works only for integral types
+
+🚫 Fails (at compile-time) for non-integral types like std::string, float, etc.
+
+Example Using SFINAE(Substitution Failure Is Not An Error) + std::enable_if
+
+#include <iostream>
+#include <type_traits>
+
+// Only enable this overload if T is an integral type
+template<typename T>
+typename std::enable_if<std::is_integral<T>::value>::type
+print_type(const T& val) {
+    std::cout << "Integral: " << val << "\n";
+}
+
+int main() {
+    print_type(42);         // ✅ Works: int is integral
+    // print_type(3.14);    // ❌ Error: double is not integral
+    // print_type("Hello"); // ❌ Error: const char* is not integral
+}
+
+What’s Happening:
+
+If T is an integral type, std::enable_if<true>::type becomes void, so this function is valid.
+
+If T is not integral, std::enable_if<false>::type is not defined → SFINAE kicks in → template is discarded.
+
+Compiler looks for other valid overloads (if any), or errors out.
+
+Optional: Add Fallback Overload
+-------------------------------
+
+You can add a fallback for non-integral types:
+
+template<typename T>
+typename std::enable_if<!std::is_integral<T>::value>::type
+print_type(const T& val) {
+    std::cout << "Not integral\n";
+}
+
+print_type(10);            // Integral: 10
+print_type(2.5);           // Not integral
+print_type(std::string("abc")); // Not integral
+
+With C++20 Concepts? Same idea, cleaner:
+----------------------------------------
+
+template<std::integral T>
+void print_type(T val) {
+    std::cout << "Integral: " << val << "\n";
+}
+
+
+2. Type Modifiers
+-----------------
+
+Create a modified version of a type (transform types).
+
+std::remove_const<const int>::type   // int
+std::add_pointer<int>::type          // int*
+std::remove_reference<int&>::type    // int
+
+| Trait                 | What it does                             |
+| --------------------- | ---------------------------------------- |
+| `remove_const<T>`     | Strips `const`                           |
+| `remove_reference<T>` | Strips `&` or `&&`                       |
+| `add_pointer<T>`      | Makes it `T*`                            |
+| `decay<T>`            | Removes ref, cv, and arrays → plain type |
+| `make_signed<T>`      | Converts unsigned to signed              |
+| `underlying_type<T>`  | Gets underlying type of an enum          |
+
+
+Scenario:
+
+You're writing a utility that must ensure a given type is:
+
+non-const
+non-reference
+always a pointer
+
+Let’s transform the type accordingly.
+
+#include <iostream>
+#include <type_traits>
+#include <typeinfo>
+
+template<typename T>
+void print_transformed_type() {
+    // Remove reference and const, then add pointer
+    using NoRef = std::remove_reference_t<T>;
+    using NoConst = std::remove_const_t<NoRef>;
+    using Pointer = std::add_pointer_t<NoConst>;
+
+    std::cout << "Original     : " << typeid(T).name() << "\n";
+    std::cout << "Transformed  : " << typeid(Pointer).name() << "\n";
+}
+
+int main() {
+    print_transformed_type<const int&>();
+    print_transformed_type<int>();
+}
+
+Output:
+------
+
+Original     : const int&
+Transformed  : int*
+Original     : int
+Transformed  : int*
+
+3. Conditional Compilation / Enable If
+--------------------------------------
+
+template<typename T>
+typename std::enable_if<std::is_integral<T>::value, T>::type
+square(T x) {
+    return x * x;
+}
+
+
+This enables the function only if T is an integral type.
+
+
+| Trait                       | Description                                     |
+| --------------------------- | ----------------------------------------------- |
+| `enable_if<cond, T>`        | If `cond` is true, gives type `T`; else, SFINAE |
+| `conditional<cond, T1, T2>` | Selects `T1` if `cond` true, else `T2`          |
+
+
+What is Conditional Compilation via type_traits?
+
+It’s when your code compiles different paths depending on properties of types using:
+
+✅ std::conditional: Choose one type or another
+
+#include <type_traits>
+#include <iostream>
+
+template<bool UseInt>
+using MyType = typename std::conditional<UseInt, int, double>::type;
+
+int main() {
+    MyType<true> x = 42;      // x is int
+    MyType<false> y = 3.14;   // y is double
+
+    std::cout << x << ", " << y << "\n";
+}
+
+std::conditional<condition, TypeA, TypeB>::type selects TypeA if condition is true, else TypeB.
+
+✅ if constexpr: Compile different code paths inside a function
+
+This is runtime-looking, but purely compile-time!
+
+#include <iostream>
+#include <type_traits>
+
+template<typename T>
+void describe_type(const T& val) {
+    if constexpr (std::is_integral_v<T>) {
+        std::cout << "Integral: " << val << "\n";
+    } else if constexpr (std::is_floating_point_v<T>) {
+        std::cout << "Floating point: " << val << "\n";
+    } else {
+        std::cout << "Unknown type\n";
+    }
+}
+
+int main() {
+    describe_type(10);      // Integral
+    describe_type(3.14);    // Floating point
+    describe_type("hi");    // Unknown
+}
+
+
+
+✅ std::enable_if: Enable or disable entire functions
+
+#include <type_traits>
+#include <iostream>
+
+template<typename T>
+std::enable_if_t<std::is_integral_v<T>>
+process(const T& val) {
+    std::cout << "Processing integral: " << val << "\n";
+}
+
+template<typename T>
+std::enable_if_t<std::is_floating_point_v<T>>
+process(const T& val) {
+    std::cout << "Processing float: " << val << "\n";
+}
+
+
+Let’s see all of these.
+
+4. Value Templates (C++17/20 shortcut)
+-------------------------------------
+
+std::is_integral_v<int>     // true
+std::remove_const_t<const int>  // int
+
+
+These are aliases:
+
+_v suffix → value (.value)
+
+_t suffix → type (::type)
+
+
+
+| Use Case           | Type Trait Example               | Concept Equivalent          |
+| ------------------ | -------------------------------- | --------------------------- |
+| Check if integral  | `std::is_integral<T>::value`     | `std::integral<T>`          |
+| Strip reference    | `std::remove_reference<T>::type` | n/a (use decltype + helper) |
+| Enable if integral | `std::enable_if<...>`            | `template<std::integral T>` |
+| Choose type        | `std::conditional<cond, T1, T2>` | `if constexpr` in code      |
+
+
+=====================================================================================================
+
+How it relates to C++20 Concepts
+
+Concepts often wrap type traits, like:
+
+
+template<typename T>
+concept Integral = std::is_integral_v<T>;
+
+But standard library already provides ready-made ones:
+
+template<std::integral T>
+void f(T x);  // Equivalent, cleaner
+
+
+
+=================================================================================
+
+1. Real-World Example Using Type Traits + SFINAE
+
+Imagine you're writing a serialize() function that behaves differently for:
+
+integral types → just print number
+
+class types with .to_json() → call that method
+
+Using SFINAE and type_traits (Pre-C++20)
+---------------------------------------
+
+#include <iostream>
+#include <type_traits>
+
+// Case 1: Integral types
+template<typename T>
+typename std::enable_if<std::is_integral<T>::value>::type
+serialize(const T& val) {
+    std::cout << "Number: " << val << "\n";
+}
+
+// Case 2: Class types with to_json
+template<typename T>
+typename std::enable_if<std::is_class<T>::value>::type
+serialize(const T& val) {
+    std::cout << "JSON: " << val.to_json() << "\n";
+}
+
+struct Person {
+    std::string to_json() const {
+        return R"({"name":"Alice"})";
+    }
+};
+
+int main() {
+    serialize(42);           // Number: 42
+    serialize(Person{});     // JSON: {"name":"Alice"}
+}
+
+This uses:
+
+std::is_integral
+
+std::is_class
+
+enable_if to choose the right overload at compile time
+
+👎 Drawback: it's verbose and hard to maintain for many cases.
+
+
+Now Same with C++20 Concepts
+
+#include <iostream>
+#include <concepts>
+
+template<std::integral T>
+void serialize(const T& val) {
+    std::cout << "Number: " << val << "\n";
+}
+
+template<typename T>
+requires requires(T t) { t.to_json(); }
+void serialize(const T& val) {
+    std::cout << "JSON: " << val.to_json() << "\n";
+}
+
+
+Summary
+=======
+type_traits enables you to query and transform types at compile time
+
+SFINAE (using enable_if) allows you to conditionally include code
+
+C++20 Concepts and requires replace SFINAE with more readable syntax
+
+Meta-programming patterns like has_size<T> can be expressed more naturally with Concepts
+
+
+
